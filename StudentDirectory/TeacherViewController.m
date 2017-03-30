@@ -70,19 +70,30 @@ typedef NS_ENUM(NSUInteger, DataState) { //1. enum is a value type ...
 #pragma mark - Actions
 - (void) buttonAddTapped: (UIButton *)sender {
     
+    [self createNewTeacher];
+    [self fetchTeachers];
+    [self.tableView reloadData];
+    
+}
+
+-(void) createNewTeacher {
     //save to database
-    Teacher *newTeacher = (Teacher *)[NSEntityDescription insertNewObjectForEntityForName:@"Teacher" inManagedObjectContext:self.context];
+    NSManagedObjectContext *context = [[CoreDataManager shared] managedObjectContext];
+    Teacher *newTeacher = (Teacher *)[NSEntityDescription insertNewObjectForEntityForName:@"Teacher" inManagedObjectContext:context];
+    
     
     newTeacher.fullName = self.textField.text;
+    
+    //Disable Empty Entries
+    if ([self.textField.text isEqualToString:@""]) {
+        return;
+    }
     
     NSError *saveError = NULL;
     [self.context save:&saveError];
     if (saveError) {
         NSLog(@"ErrorSaving %@ | Description : %@ | Reason : %@", self.textField.text, saveError.localizedDescription, saveError.localizedFailureReason);
     }
-    [self fetchTeachers];
-    [self.tableView reloadData];
-    
 }
 
 -(void) fetchTeachers {
@@ -156,40 +167,36 @@ typedef NS_ENUM(NSUInteger, DataState) { //1. enum is a value type ...
 
 -(void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     
-     Teacher *selectedTeacher = self.teachers[indexPath.row];
+    Teacher *selectedTeacher = self.teachers[indexPath.row];
     
     ViewController *controller = [self.storyboard instantiateViewControllerWithIdentifier:NSStringFromClass([ViewController class])];
     
-
     controller.currentTeacher = selectedTeacher;
 
-    
     [self.navigationController pushViewController:controller animated:YES];
     
 }
 
+//UITABLEVIEW DELETE FUNCTION
 -(void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     
     if (editingStyle == UITableViewCellEditingStyleDelete){
-        UIAlertController *deleteAlertController = [UIAlertController alertControllerWithTitle:@"Warning:" message:@"Are you sure you want to delete item?" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *deleteAlertController = [UIAlertController alertControllerWithTitle:@"Warning:" message:@"Are you sure you want to delete item?" preferredStyle:UIAlertControllerStyleAlert];
         
-        //ADD DELETE ACTION
-        UIAlertAction *deleteAction = [UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+    //ADD DELETE ACTION
+    UIAlertAction *deleteAction = [UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
             
-            
-            [self removeTeachers:self.teachers[indexPath.row]];
-            //[self removeTeachers:self.teachers[indexPath.row]
-            
-        }];
+    [self removeTeachers:self.teachers[indexPath.row]];
+    }];
         
-        [deleteAlertController addAction:deleteAction];
+    [deleteAlertController addAction:deleteAction];
         
-        UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
             
-        }];
-        [deleteAlertController addAction:cancelAction];
+    }];
+    [deleteAlertController addAction:cancelAction];
         
-        [self presentViewController:deleteAlertController animated:YES completion:nil];
+    [self presentViewController:deleteAlertController animated:YES completion:nil];
     }
 }
 

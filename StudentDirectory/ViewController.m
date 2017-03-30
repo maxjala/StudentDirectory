@@ -11,7 +11,7 @@
 #import "CoreDataManager.h"
 #import "StudentDetailViewController.h"
 
-@interface ViewController () <UITableViewDataSource, UITableViewDelegate>
+@interface ViewController () <UITableViewDataSource, UITableViewDelegate, NSFetchedResultsControllerDelegate>
 
 @property (weak, nonatomic) IBOutlet UITextField *textField;
 
@@ -29,9 +29,9 @@
 
 @property (strong, nonatomic) NSMutableArray *femaleStudentsArray;
 
-@property (weak, nonatomic) Student *genderedStudent;
+//@property (weak, nonatomic) Student *student;
 
-@property (weak, nonatomic) Student *student;
+@property (strong, nonatomic) NSFetchedResultsController *fetchedResultsController;
 
 
 
@@ -43,13 +43,14 @@
     [super viewDidLoad];
     
     [self setUpData];
-    [self fetchData];
+    //[self filterGender];
     [self setupUI];
 
 }
 
 -(void)viewWillAppear:(BOOL)animated {
-    [self fetchData];
+    [self filterGender];
+    [self.tableView reloadData];
 }
 
 
@@ -72,21 +73,43 @@
     
     self.students = [NSMutableArray array];
     
+    NSFetchRequest *fetchRequest = [Student fetchRequest];
+    self.context = [[CoreDataManager shared] managedObjectContext];
+    
+    //set predicate - unique identifier for teacher
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"teacher.fullName == %@", self.currentTeacher.fullName];
+    [fetchRequest setPredicate:predicate];
+    
+//    self.fetchedResultsController = [[NSFetchedResultsController alloc] initWithFetchRequest:fetchRequest managedObjectContext:context sectionNameKeyPath:NULL cacheName:NULL];
+    
+    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"name" ascending:YES];
+    [fetchRequest setSortDescriptors:@[sortDescriptor]];
+  
+    self.fetchedResultsController = [[NSFetchedResultsController alloc] initWithFetchRequest:fetchRequest managedObjectContext:self.context sectionNameKeyPath:NULL cacheName:NULL];
+    
+    self.fetchedResultsController.delegate = self; //will observe changes in table view and database;
+    NSError *fetchControllerError = NULL;
+    [self.fetchedResultsController performFetch:&fetchControllerError];
+    
+    if (fetchControllerError) {
+        NSLog(@"FetchController Error: %@", fetchControllerError);
+    }
+    
+    [self filterGender];
+    
 }
 
 
 -(void)buttonAddTapped:(UIButton *)sender {
     
     [self createNewStudent];
-    [self fetchData];
-    [self.tableView reloadData];
     
 }
 
 -(void)createNewStudent {
     
-    NSManagedObjectContext *context = [[CoreDataManager shared] managedObjectContext];
-    Student *aStudent = (Student *)[NSEntityDescription insertNewObjectForEntityForName:@"Student" inManagedObjectContext:context];
+    //NSManagedObjectContext *context = [[CoreDataManager shared] managedObjectContext];
+    Student *aStudent = (Student *)[NSEntityDescription insertNewObjectForEntityForName:@"Student" inManagedObjectContext:self.context];
     
     NSArray *randomGenderArray = @[@"Male", @"Female"];
     int r = arc4random_uniform(2);
@@ -98,45 +121,25 @@
     aStudent.gender = randomGenderArray[r];
     
     
+    //Disable Empty Entries
+    if ([self.textField.text isEqualToString:@""]) {
+        return;
+    }
+    
+    
     // establish relationship
     aStudent.teacher = self.currentTeacher;
     
     NSError *saveError = NULL;
-    [context save:&saveError];
+    [self.context save:&saveError];
     
     if (saveError) {
         //save failed, show alert
         return;
         
     }
-}
-
--(void)fetchData {
-    
-    NSFetchRequest *fetchRequest = [Student fetchRequest];
-    NSManagedObjectContext *context = [[CoreDataManager shared] managedObjectContext];
-    
-    //set predicate - unique identifier for teacher
-   NSPredicate *predicate = [NSPredicate predicateWithFormat:@"teacher.fullName == %@", self.currentTeacher.fullName];
-    [fetchRequest setPredicate:predicate];
-    
-    //sort
-    //NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"fullName" ascending:YES];
-    //[fetchRequest setSortDescriptors:@[sortDescriptor]];
-    
-    NSError *fetchError = NULL;
-    self.students = [[context executeFetchRequest:fetchRequest error:&fetchError]mutableCopy];
-    
-    
-    if (fetchError) {
-        //fetching failed, show alert
-        return;
-    }
-    
     [self filterGender];
-   [self.tableView reloadData];
-    
-    
+    //[self.tableView reloadData];
 }
 
 -(void)removeStudents:(Student *)student {
@@ -149,18 +152,23 @@
     if (saveError) {
         return;
     }
-    [self fetchData];
+    [self filterGender];
+    //[self.tableView reloadData];
+
 }
-
-
-    
 
 
 #pragma mark - UITableViewDataSource
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     
-    return @"Students:";
+    if (tableView.tag == 0) {
+        return @"All Students:";
+    } else if (tableView.tag ==1) {
+        return @"Male Students:";
+    } else {
+        return @"Female Students:";
+    }
     
 }
 
@@ -171,26 +179,30 @@
     } else if (tableView.tag==1) {
         return [self.maleStudentsArray count];
     } else {
-    return self.students.count;
-        
+        return self.fetchedResultsController.fetchedObjects.count;
+
 }
 }
+
 
 -(UITableViewCell *) tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"StudentCell" forIndexPath:indexPath];
     
+    Student *student = [self.fetchedResultsController objectAtIndexPath:indexPath];
+    
     //FILTER TABLEVIEW BY GENDER
     if (tableView.tag == 0) {
-        self.student = self.students[indexPath.row];
+        //student = self.students[indexPath.row];
+      student = self.fetchedResultsController.fetchedObjects[indexPath.row];
     } else if (tableView.tag ==1) {
-        self.student = self.maleStudentsArray[indexPath.row];
+        student = self.maleStudentsArray[indexPath.row];
     } else {
-        self.student = self.femaleStudentsArray[indexPath.row];
+        student = self.femaleStudentsArray[indexPath.row];
     }
-
-        cell.textLabel.text = self.student.name;
-        cell.detailTextLabel.text = [NSString stringWithFormat:@"Age: %i                Gender: %@", self.student.age, self.student.gender];
+    
+    cell.textLabel.text = student.name;
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"Age: %i                Gender: %@", student.age, student.gender];
     
     return cell;
     
@@ -206,7 +218,8 @@
         //ADD DELETE ACTION
         UIAlertAction *deleteAction = [UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
             
-            [self removeStudents:self.students[indexPath.row]];
+            [self removeStudents:self.fetchedResultsController.fetchedObjects[indexPath.row]];
+            
             
         }];
         [deleteAlertController addAction:deleteAction];
@@ -223,7 +236,8 @@
 
 -(void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     
-    self.selectedStudent = self.students[indexPath.row];
+    
+    self.selectedStudent = [self.fetchedResultsController objectAtIndexPath:indexPath];
     
     StudentDetailViewController *controller = [self.storyboard instantiateViewControllerWithIdentifier:NSStringFromClass([StudentDetailViewController class])];
     
@@ -237,31 +251,76 @@
 
 #pragma mark - Segmented Controller Actions and Filters
 
+
 - (IBAction)filterTableView:(UISegmentedControl *)sender {
     
     if (sender.selectedSegmentIndex == 2) {
         self.tableView.tag = 2;
+        //[self.tableView reloadData];
     }
     else if (sender.selectedSegmentIndex == 1) {
         self.tableView.tag = 1;
+        //[self.tableView reloadData];
     } else {
         self.tableView.tag = 0;
+        //[self.tableView reloadData];
     }
     
     [self.tableView reloadData];
 }
 
+
 -(void)filterGender {
     self.maleStudentsArray = [[NSMutableArray alloc]init];
     self.femaleStudentsArray = [[NSMutableArray alloc]init];
     
-    for (_genderedStudent in self.students) {
-        if ([_genderedStudent.gender isEqualToString: @"Male"])  {
-            [self.maleStudentsArray addObject: _genderedStudent];
+    for (Student *genderedStudent in self.fetchedResultsController.fetchedObjects) {
+        if ([genderedStudent.gender isEqualToString: @"Male"])  {
+            [self.maleStudentsArray addObject: genderedStudent];
         } else {
-            [self.femaleStudentsArray addObject:_genderedStudent];
+            [self.femaleStudentsArray addObject:genderedStudent];
         }
     }
+    //[self.tableView reloadData];
+   
+}
+
+#pragma mark - NSFetchedResultsController Delegate
+
+- (void)controller:(NSFetchedResultsController *)controller didChangeObject:(id)anObject atIndexPath:(nullable NSIndexPath *)indexPath forChangeType:(NSFetchedResultsChangeType)type newIndexPath:(nullable NSIndexPath *)newIndexPath; {
+    
+    [self.tableView beginUpdates];
+    
+    switch (type) { //type is value you want to check
+            case NSFetchedResultsChangeInsert:
+        {
+            [self.tableView insertRowsAtIndexPaths:@[newIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+        }
+            break;
+        case NSFetchedResultsChangeDelete:
+        {
+            [self.tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
+        }
+            break;
+        case NSFetchedResultsChangeMove:
+        {
+            [self.tableView moveRowAtIndexPath:indexPath toIndexPath:newIndexPath];
+        }
+            break;
+        case NSFetchedResultsChangeUpdate:
+        {
+            [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+        }
+            break;
+
+    }
+    
+//perform the same as an if statement --> if(type == NSFetchedResultsChangeInsert {
+    
+//} else if (_____) { etc...
+
+    
+    [self.tableView endUpdates];
 }
 
 
